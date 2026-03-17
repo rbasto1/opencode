@@ -983,6 +983,22 @@ export default function Layout(props: ParentProps) {
     }
   }
 
+  async function markDone(session: Session) {
+    const [, setStore] = globalSync.child(session.directory)
+    const title = "DONE: " + session.title
+    await globalSDK.client.session.update({
+      directory: session.directory,
+      sessionID: session.id,
+      title,
+    })
+    setStore(
+      produce((draft) => {
+        const match = Binary.search(draft.session, session.id, (s) => s.id)
+        if (match.found) draft.session[match.index].title = title
+      }),
+    )
+  }
+
   async function archiveSession(session: Session) {
     const [store, setStore] = globalSync.child(session.directory)
     const sessions = store.session ?? []
@@ -1970,6 +1986,7 @@ export default function Layout(props: ParentProps) {
     clearHoverProjectSoon,
     prefetchSession,
     archiveSession,
+    markDone,
     workspaceName,
     renameWorkspace,
     editorOpen,
@@ -2016,6 +2033,7 @@ export default function Layout(props: ParentProps) {
       clearHoverProjectSoon,
       prefetchSession,
       archiveSession,
+      markDone,
     },
   }
 

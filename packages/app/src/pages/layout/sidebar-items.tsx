@@ -78,6 +78,7 @@ export type SessionItemProps = {
   clearHoverProjectSoon: () => void
   prefetchSession: (session: Session, priority?: "high" | "low") => void
   archiveSession: (session: Session) => Promise<void>
+  markDone: (session: Session) => Promise<void>
 }
 
 const SessionRow = (props: {
@@ -108,28 +109,34 @@ const SessionRow = (props: {
         props.clearHoverProjectSoon()
       }}
     >
-      <Show when={props.isWorking() || props.hasPermissions() || props.hasError() || props.unseenCount() > 0}>
-        <div
-          class="shrink-0 size-6 flex items-center justify-center"
-          style={{ color: props.tint() ?? "var(--icon-interactive-base)" }}
-        >
-          <Switch>
-            <Match when={props.isWorking()}>
-              <Spinner class="size-[15px]" />
-            </Match>
-            <Match when={props.hasPermissions()}>
-              <div class="size-1.5 rounded-full bg-surface-warning-strong" />
-            </Match>
-            <Match when={props.hasError()}>
-              <div class="size-1.5 rounded-full bg-text-diff-delete-base" />
-            </Match>
-            <Match when={props.unseenCount() > 0}>
-              <div class="size-1.5 rounded-full bg-text-interactive-base" />
-            </Match>
-          </Switch>
-        </div>
-      </Show>
-      <span class="text-14-regular text-text-strong min-w-0 flex-1 truncate">{title()}</span>
+      <div
+        class="shrink-0 size-6 flex items-center justify-center"
+        style={{ color: props.tint() ?? "var(--icon-interactive-base)" }}
+      >
+        <Switch fallback={<Icon name="dash" size="small" class="text-icon-weak" />}>
+          <Match when={props.isWorking()}>
+            <Spinner class="size-[15px]" />
+          </Match>
+          <Match when={props.hasPermissions()}>
+            <div class="size-1.5 rounded-full bg-surface-warning-strong" />
+          </Match>
+          <Match when={props.hasError()}>
+            <div class="size-1.5 rounded-full bg-text-diff-delete-base" />
+          </Match>
+          <Match when={props.unseenCount() > 0}>
+            <div class="size-1.5 rounded-full bg-text-interactive-base" />
+          </Match>
+        </Switch>
+      </div>
+      <span
+        class="text-14-regular min-w-0 flex-1 truncate"
+        classList={{
+          "text-text-weak": props.session.title?.startsWith("DONE: "),
+          "text-text-strong": !props.session.title?.startsWith("DONE: "),
+        }}
+      >
+        {title()}
+      </span>
     </A>
   )
 }
@@ -236,31 +243,39 @@ export const SessionItem = (props: SessionItemProps): JSX.Element => {
             </Show>
           </div>
 
-          <Show when={!props.level}>
-            <div
-              class="shrink-0 overflow-hidden transition-[width,opacity]"
-              classList={{
-                "w-6 opacity-100 pointer-events-auto": !!props.mobile,
-                "w-0 opacity-0 pointer-events-none": !props.mobile,
-                "group-hover/session:w-6 group-hover/session:opacity-100 group-hover/session:pointer-events-auto": true,
-                "group-focus-within/session:w-6 group-focus-within/session:opacity-100 group-focus-within/session:pointer-events-auto": true,
-              }}
-            >
-              <Tooltip value={language.t("common.archive")} placement="top">
-                <IconButton
-                  icon="archive"
-                  variant="ghost"
-                  class="size-6 rounded-md"
-                  aria-label={language.t("common.archive")}
-                  onClick={(event) => {
-                    event.preventDefault()
-                    event.stopPropagation()
-                    void props.archiveSession(props.session)
-                  }}
-                />
-              </Tooltip>
-            </div>
+        </div>
+
+        <div
+          class={`flex shrink-0 overflow-hidden transition-[width,opacity] ${props.mobile ? `${props.session.title?.startsWith("DONE: ") ? "w-6" : "w-12"} opacity-100 pointer-events-auto` : "w-0 opacity-0 pointer-events-none"} ${props.session.title?.startsWith("DONE: ") ? "group-hover/session:w-6 group-focus-within/session:w-6" : "group-hover/session:w-12 group-focus-within/session:w-12"} group-hover/session:opacity-100 group-hover/session:pointer-events-auto group-focus-within/session:opacity-100 group-focus-within/session:pointer-events-auto`}
+        >
+          <Show when={!props.session.title?.startsWith("DONE: ")}>
+            <Tooltip value="Mark done" placement="top">
+              <IconButton
+                icon="check"
+                variant="ghost"
+                class="size-6 rounded-md"
+                aria-label="Mark done"
+                onClick={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  void props.markDone(props.session)
+                }}
+              />
+            </Tooltip>
           </Show>
+          <Tooltip value={language.t("common.archive")} placement="top">
+            <IconButton
+              icon="archive"
+              variant="ghost"
+              class="size-6 rounded-md"
+              aria-label={language.t("common.archive")}
+              onClick={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+                void props.archiveSession(props.session)
+              }}
+            />
+          </Tooltip>
         </div>
       </div>
       <Show when={currentChild()}>
