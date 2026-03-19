@@ -11,6 +11,7 @@ import { getAdaptor } from "./adaptors"
 import { WorkspaceInfo } from "./types"
 import { WorkspaceID } from "./schema"
 import { parseSSE } from "./sse"
+import { Sync } from "@/sync"
 
 export namespace Workspace {
   export const Event = {
@@ -70,17 +71,20 @@ export namespace Workspace {
     }
 
     Database.use((db) => {
-      db.insert(WorkspaceTable)
-        .values({
-          id: info.id,
-          type: info.type,
-          branch: info.branch,
-          name: info.name,
-          directory: info.directory,
-          extra: info.extra,
-          project_id: info.projectID,
-        })
-        .run()
+      const row = {
+        id: info.id,
+        type: info.type,
+        branch: info.branch,
+        name: info.name,
+        directory: info.directory,
+        extra: info.extra,
+        project_id: info.projectID,
+      }
+      db.insert(WorkspaceTable).values(row).run()
+      Database.effect(() => {
+        Sync.emit({ kind: "workspace.upsert", row })
+        Sync.trigger()
+      })
     })
 
     await adaptor.create(config)
@@ -106,7 +110,13 @@ export namespace Workspace {
       const info = fromRow(row)
       const adaptor = await getAdaptor(row.type)
       adaptor.remove(info)
-      Database.use((db) => db.delete(WorkspaceTable).where(eq(WorkspaceTable.id, id)).run())
+      Database.use((db) => {
+        db.delete(WorkspaceTable).where(eq(WorkspaceTable.id, id)).run()
+        Database.effect(() => {
+          Sync.emit({ kind: "workspace.delete", id })
+          Sync.trigger()
+        })
+      })
       return info
     }
   })
