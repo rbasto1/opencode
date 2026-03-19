@@ -4,6 +4,7 @@ import { SessionID } from "./schema"
 import z from "zod"
 import { Database, eq, asc } from "../storage/db"
 import { TodoTable } from "./session.sql"
+import { Sync } from "@/sync"
 
 export namespace Todo {
   export const Info = z
@@ -26,20 +27,20 @@ export namespace Todo {
   }
 
   export function update(input: { sessionID: SessionID; todos: Info[] }) {
+    const rows = input.todos.map((todo, position) => ({
+      session_id: input.sessionID,
+      content: todo.content,
+      status: todo.status,
+      priority: todo.priority,
+      position,
+    }))
     Database.transaction((db) => {
       db.delete(TodoTable).where(eq(TodoTable.session_id, input.sessionID)).run()
-      if (input.todos.length === 0) return
-      db.insert(TodoTable)
-        .values(
-          input.todos.map((todo, position) => ({
-            session_id: input.sessionID,
-            content: todo.content,
-            status: todo.status,
-            priority: todo.priority,
-            position,
-          })),
-        )
-        .run()
+      if (rows.length > 0) db.insert(TodoTable).values(rows).run()
+      Database.effect(() => {
+        Sync.emit({ kind: "todo.replace", sessionID: input.sessionID, rows })
+        Sync.trigger()
+      })
     })
     Bus.publish(Event.Updated, input)
   }
