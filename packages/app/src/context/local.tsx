@@ -119,10 +119,10 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       setStore("current", items[0]?.name)
     })
 
-    const scope = createMemo<State | undefined>(() => {
-      const session = id()
-      if (!session) return store.draft
-      return saved.session[session] ?? handoff.get(handoffKey(sdk.directory, session))
+    const session = createMemo<State | undefined>(() => {
+      const value = id()
+      if (!value) return
+      return saved.session[value] ?? handoff.get(handoffKey(sdk.directory, value))
     })
 
     createEffect(() => {
@@ -175,7 +175,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     const agent = {
       list,
       current() {
-        return pickAgent(scope()?.agent ?? store.current)
+        return pickAgent(session()?.agent ?? store.draft?.agent ?? store.current)
       },
       set(name: string | undefined) {
         const item = pickAgent(name)
@@ -192,15 +192,15 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             model: item.model,
             variant: item.variant ?? null,
           })
-          const prev = scope()
+          const prev = id() ? session() : store.draft
           const next = {
             agent: item.name,
             model: item.model ?? prev?.model,
             variant: item.variant ?? prev?.variant,
           } satisfies State
-          const session = id()
-          if (session) {
-            setSaved("session", session, next)
+          const value = id()
+          if (value) {
+            setSaved("session", value, next)
             return
           }
           setStore("draft", next)
@@ -224,7 +224,8 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
 
     const current = () => {
       const item = firstModel(
-        () => scope()?.model,
+        () => session()?.model,
+        () => store.draft?.model,
         () => agent.current()?.model,
         fallback,
       )
@@ -242,7 +243,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       })
     }
 
-    const selected = () => scope()?.variant
+    const selected = () => session()?.variant ?? store.draft?.variant
 
     const snapshot = () => {
       const model = current()
@@ -255,13 +256,13 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
 
     const write = (next: Partial<State>) => {
       const state = {
-        ...(scope() ?? { agent: agent.current()?.name }),
+        ...(id() ? session() : (store.draft ?? { agent: agent.current()?.name })),
         ...next,
       } satisfies State
 
-      const session = id()
-      if (session) {
-        setSaved("session", session, state)
+      const value = id()
+      if (value) {
+        setSaved("session", value, state)
         return
       }
       setStore("draft", state)
@@ -416,7 +417,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           variant: result.model.variant.current() ?? null,
           selected: result.model.variant.selected(),
           configured: result.model.variant.configured(),
-          pick: scope(),
+          pick: id() ? session() : store.draft,
           base: undefined,
           current: store.current,
           variants: result.model.variant.list(),

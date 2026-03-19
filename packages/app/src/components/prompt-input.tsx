@@ -525,6 +525,15 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     if (cursor !== null) setCursorPosition(editorRef, cursor)
   }
 
+  createEffect(
+    on(
+      () => params.id,
+      () => {
+        requestAnimationFrame(() => editorRef?.focus())
+      },
+    ),
+  )
+
   createEffect(() => {
     params.id
     if (params.id) return
