@@ -32,6 +32,7 @@ import { PermissionNext } from "@/permission/next"
 import { Global } from "@/global"
 import type { LanguageModelV2Usage } from "@ai-sdk/provider"
 import { iife } from "@/util/iife"
+import { Sync } from "@/sync"
 
 export namespace Session {
   const log = Log.create({ service: "session" })
@@ -83,6 +84,13 @@ export namespace Session {
         archived: row.time_archived ?? undefined,
       },
     }
+  }
+
+  function sync(row: typeof SessionTable.$inferInsert) {
+    Database.effect(() => {
+      Sync.emit({ kind: "session.upsert", row })
+      Sync.trigger()
+    })
   }
 
   export function toRow(info: Info) {
@@ -290,6 +298,7 @@ export namespace Session {
         .get()
       if (!row) throw new NotFoundError({ message: `Session not found: ${sessionID}` })
       const info = fromRow(row)
+      sync(row)
       Database.effect(() => Bus.publish(Event.Updated, { info }))
     })
   })
@@ -319,7 +328,9 @@ export namespace Session {
     }
     log.info("created", result)
     Database.use((db) => {
-      db.insert(SessionTable).values(toRow(result)).run()
+      const row = toRow(result)
+      db.insert(SessionTable).values(row).run()
+      sync(row)
       Database.effect(() =>
         Bus.publish(Event.Created, {
           info: result,
@@ -361,6 +372,7 @@ export namespace Session {
       const row = db.update(SessionTable).set({ share_url: share.url }).where(eq(SessionTable.id, id)).returning().get()
       if (!row) throw new NotFoundError({ message: `Session not found: ${id}` })
       const info = fromRow(row)
+      sync(row)
       Database.effect(() => Bus.publish(Event.Updated, { info }))
     })
     return share
@@ -374,6 +386,7 @@ export namespace Session {
       const row = db.update(SessionTable).set({ share_url: null }).where(eq(SessionTable.id, id)).returning().get()
       if (!row) throw new NotFoundError({ message: `Session not found: ${id}` })
       const info = fromRow(row)
+      sync(row)
       Database.effect(() => Bus.publish(Event.Updated, { info }))
     })
   })
@@ -393,6 +406,7 @@ export namespace Session {
           .get()
         if (!row) throw new NotFoundError({ message: `Session not found: ${input.sessionID}` })
         const info = fromRow(row)
+        sync(row)
         Database.effect(() => Bus.publish(Event.Updated, { info }))
         return info
       })
@@ -414,6 +428,7 @@ export namespace Session {
           .get()
         if (!row) throw new NotFoundError({ message: `Session not found: ${input.sessionID}` })
         const info = fromRow(row)
+        sync(row)
         Database.effect(() => Bus.publish(Event.Updated, { info }))
         return info
       })
@@ -435,6 +450,7 @@ export namespace Session {
           .get()
         if (!row) throw new NotFoundError({ message: `Session not found: ${input.sessionID}` })
         const info = fromRow(row)
+        sync(row)
         Database.effect(() => Bus.publish(Event.Updated, { info }))
         return info
       })
@@ -463,6 +479,7 @@ export namespace Session {
           .get()
         if (!row) throw new NotFoundError({ message: `Session not found: ${input.sessionID}` })
         const info = fromRow(row)
+        sync(row)
         Database.effect(() => Bus.publish(Event.Updated, { info }))
         return info
       })
@@ -482,6 +499,7 @@ export namespace Session {
         .get()
       if (!row) throw new NotFoundError({ message: `Session not found: ${sessionID}` })
       const info = fromRow(row)
+      sync(row)
       Database.effect(() => Bus.publish(Event.Updated, { info }))
       return info
     })
@@ -507,6 +525,7 @@ export namespace Session {
           .get()
         if (!row) throw new NotFoundError({ message: `Session not found: ${input.sessionID}` })
         const info = fromRow(row)
+        sync(row)
         Database.effect(() => Bus.publish(Event.Updated, { info }))
         return info
       })
@@ -672,6 +691,10 @@ export namespace Session {
       // CASCADE delete handles messages and parts automatically
       Database.use((db) => {
         db.delete(SessionTable).where(eq(SessionTable.id, sessionID)).run()
+        Database.effect(() => {
+          Sync.emit({ kind: "session.delete", id: sessionID })
+          Sync.trigger()
+        })
         Database.effect(() =>
           Bus.publish(Event.Deleted, {
             info: session,
@@ -687,15 +710,20 @@ export namespace Session {
     const time_created = msg.time.created
     const { id, sessionID, ...data } = msg
     Database.use((db) => {
+      const row = {
+        id,
+        session_id: sessionID,
+        time_created,
+        data,
+      }
       db.insert(MessageTable)
-        .values({
-          id,
-          session_id: sessionID,
-          time_created,
-          data,
-        })
+        .values(row)
         .onConflictDoUpdate({ target: MessageTable.id, set: { data } })
         .run()
+      Database.effect(() => {
+        Sync.emit({ kind: "message.upsert", row })
+        Sync.trigger()
+      })
       Database.effect(() =>
         Bus.publish(MessageV2.Event.Updated, {
           info: msg,
@@ -716,6 +744,10 @@ export namespace Session {
         db.delete(MessageTable)
           .where(and(eq(MessageTable.id, input.messageID), eq(MessageTable.session_id, input.sessionID)))
           .run()
+        Database.effect(() => {
+          Sync.emit({ kind: "message.delete", sessionID: input.sessionID, messageID: input.messageID })
+          Sync.trigger()
+        })
         Database.effect(() =>
           Bus.publish(MessageV2.Event.Removed, {
             sessionID: input.sessionID,
@@ -738,6 +770,10 @@ export namespace Session {
         db.delete(PartTable)
           .where(and(eq(PartTable.id, input.partID), eq(PartTable.session_id, input.sessionID)))
           .run()
+        Database.effect(() => {
+          Sync.emit({ kind: "part.delete", sessionID: input.sessionID, partID: input.partID })
+          Sync.trigger()
+        })
         Database.effect(() =>
           Bus.publish(MessageV2.Event.PartRemoved, {
             sessionID: input.sessionID,
@@ -756,16 +792,21 @@ export namespace Session {
     const { id, messageID, sessionID, ...data } = part
     const time = Date.now()
     Database.use((db) => {
+      const row = {
+        id,
+        message_id: messageID,
+        session_id: sessionID,
+        time_created: time,
+        data,
+      }
       db.insert(PartTable)
-        .values({
-          id,
-          message_id: messageID,
-          session_id: sessionID,
-          time_created: time,
-          data,
-        })
+        .values(row)
         .onConflictDoUpdate({ target: PartTable.id, set: { data } })
         .run()
+      Database.effect(() => {
+        Sync.emit({ kind: "part.upsert", row })
+        Sync.trigger()
+      })
       Database.effect(() =>
         Bus.publish(MessageV2.Event.PartUpdated, {
           part: structuredClone(part),

@@ -9,6 +9,7 @@ import { Flag } from "@/flag/flag"
 import { fn } from "@opencode-ai/util/fn"
 import { BusEvent } from "@/bus/bus-event"
 import { iife } from "@/util/iife"
+import { Sync } from "@/sync"
 import { GlobalBus } from "@/bus/global"
 import { existsSync } from "fs"
 import { git } from "../util/git"
@@ -269,9 +270,13 @@ export namespace Project {
       sandboxes: result.sandboxes,
       commands: result.commands,
     }
-    Database.use((db) =>
-      db.insert(ProjectTable).values(insert).onConflictDoUpdate({ target: ProjectTable.id, set: updateSet }).run(),
-    )
+    Database.use((db) => {
+      db.insert(ProjectTable).values(insert).onConflictDoUpdate({ target: ProjectTable.id, set: updateSet }).run()
+      Database.effect(() => {
+        Sync.emit({ kind: "project.upsert", row: { ...insert, ...updateSet } })
+        Sync.trigger()
+      })
+    })
     // Runs after upsert so the target project row exists (FK constraint).
     // Runs on every startup because sessions created before git init
     // accumulate under "global" and need migrating whenever they appear.
