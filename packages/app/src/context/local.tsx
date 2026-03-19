@@ -23,6 +23,10 @@ type Saved = {
   session: Record<string, State | undefined>
 }
 
+type ProjectSaved = {
+  project: Record<string, Pick<State, "model" | "variant"> | undefined>
+}
+
 const WORKSPACE_KEY = "__workspace__"
 const handoff = new Map<string, State>()
 
@@ -74,6 +78,12 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         session: {},
       }),
     )
+    const [projectSaved, setProjectSaved] = persisted(
+      Persist.global("model-selection-project", ["model-selection-project.v1"]),
+      createStore<ProjectSaved>({
+        project: {},
+      }),
+    )
 
     const [store, setStore] = createStore<{
       current?: string
@@ -89,6 +99,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       draft: undefined,
       last: undefined,
     })
+    const pid = createMemo(() => sync.project?.id)
 
     const validModel = (model: ModelKey) => {
       const provider = providers.all().find((item) => item.id === model.providerID)
@@ -124,6 +135,19 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       if (!value) return
       return saved.session[value] ?? handoff.get(handoffKey(sdk.directory, value))
     })
+
+    const project = createMemo<Pick<State, "model" | "variant"> | undefined>(() => {
+      const value = pid()
+      if (!value) return
+      return projectSaved.project[value]
+    })
+
+    createEffect((prev) => {
+      if (id()) return pid()
+      const value = pid()
+      if (prev !== undefined && prev !== value && store.draft) setStore("draft", undefined)
+      return value
+    }, pid())
 
     createEffect(() => {
       const session = id()
@@ -192,7 +216,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             model: item.model,
             variant: item.variant ?? null,
           })
-          const prev = id() ? session() : store.draft
+          const prev = id() ? session() : (store.draft ?? project())
           const next = {
             agent: item.name,
             model: item.model ?? prev?.model,
@@ -226,6 +250,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       const item = firstModel(
         () => session()?.model,
         () => store.draft?.model,
+        () => project()?.model,
         () => agent.current()?.model,
         fallback,
       )
@@ -243,7 +268,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       })
     }
 
-    const selected = () => session()?.variant ?? store.draft?.variant
+    const selected = () => session()?.variant ?? store.draft?.variant ?? project()?.variant
 
     const snapshot = () => {
       const model = current()
@@ -256,7 +281,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
 
     const write = (next: Partial<State>) => {
       const state = {
-        ...(id() ? session() : (store.draft ?? { agent: agent.current()?.name })),
+        ...(id() ? session() : (store.draft ?? project() ?? { agent: agent.current()?.name })),
         ...next,
       } satisfies State
 
@@ -266,6 +291,12 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         return
       }
       setStore("draft", state)
+    }
+
+    const writeProject = (next: Pick<State, "model" | "variant">) => {
+      const project = pid()
+      if (!project) return
+      setProjectSaved("project", project, next)
     }
 
     const recent = createMemo(() => models.recent.list().map(models.find).filter(Boolean))
@@ -300,6 +331,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             variant: selected(),
           })
           write({ model: item })
+          writeProject({ model: item, variant: selected() ?? null })
           if (!item) return
           models.setVisibility(item, true)
           if (!options?.recent) return
@@ -337,6 +369,10 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
               variant: value ?? null,
             })
             write({ variant: value ?? null })
+            writeProject({
+              model: model ? { providerID: model.provider.id, modelID: model.id } : undefined,
+              variant: value ?? null,
+            })
           })
         },
         cycle() {
@@ -418,7 +454,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           selected: result.model.variant.selected(),
           configured: result.model.variant.configured(),
           pick: id() ? session() : store.draft,
-          base: undefined,
+          base: project(),
           current: store.current,
           variants: result.model.variant.list(),
           models: result.model
