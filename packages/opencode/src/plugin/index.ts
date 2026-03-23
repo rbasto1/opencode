@@ -29,6 +29,8 @@ import type { WorkspaceAdaptor } from "@/control-plane/types"
 export namespace Plugin {
   const log = Log.create({ service: "plugin" })
 
+  const BUILTIN = ["opencode-anthropic-auth@0.0.13"]
+
   type State = {
     hooks: Hooks[]
   }

@@ -352,11 +352,13 @@ export namespace LLM {
                     "x-opencode-request": input.user.id,
                     "x-opencode-client": Flag.OPENCODE_CLIENT,
                   }
-                : {
-                    "x-session-affinity": input.sessionID,
-                    ...(input.parentSessionID ? { "x-parent-session-id": input.parentSessionID } : {}),
-                    "User-Agent": `opencode/${Installation.VERSION}`,
-                  }),
+                : input.model.providerID !== "anthropic"
+                  ? {
+                      "x-session-affinity": input.sessionID,
+                      ...(input.parentSessionID ? { "x-parent-session-id": input.parentSessionID } : {}),
+                      "User-Agent": `opencode/${Installation.VERSION}`,
+                    }
+                  : undefined),
               ...input.model.headers,
               ...headers,
             },
