@@ -1,5 +1,6 @@
 import { useFilteredList } from "@opencode-ai/ui/hooks"
 import { useSpring } from "@opencode-ai/ui/motion-spring"
+import { createMediaQuery } from "@solid-primitives/media"
 import { createEffect, on, Component, Show, onCleanup, createMemo, createSignal } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useLocal } from "@/context/local"
@@ -100,6 +101,7 @@ const EXAMPLES = [
 const NON_EMPTY_TEXT = /[^\s\u200B]/
 
 export const PromptInput: Component<PromptInputProps> = (props) => {
+  const touch = createMediaQuery("(hover: none)")
   const sdk = useSDK()
   const sync = useSync()
   const local = useLocal()
@@ -1257,6 +1259,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
     // Note: Shift+Enter is handled earlier, before IME check
     if (event.key === "Enter" && !event.shiftKey) {
+      if (touch()) {
+        addPart({ type: "text", content: "\n", start: 0, end: 0 })
+        event.preventDefault()
+        return
+      }
       event.preventDefault()
       if (event.repeat) return
       if (
