@@ -37,6 +37,7 @@ import { errorMessage } from "./util/error"
 import { PluginCommand } from "./cli/cmd/plug"
 import { Heap } from "./cli/heap"
 import { drizzle } from "drizzle-orm/bun-sqlite"
+import { SessionRecover } from "./session/recover"
 
 process.on("unhandledRejection", (e) => {
   Log.Default.error("rejection", {
@@ -145,6 +146,8 @@ const cli = yargs(args)
       }
       process.stderr.write("Database migration complete." + EOL)
     }
+
+    await SessionRecover.run()
   })
   .usage("")
   .completion("completion", "generate shell completion script")
