@@ -52,6 +52,15 @@ const setStorage = (key: string, value: string | null) => {
 const readDefaultServerUrl = () => getStorage(DEFAULT_SERVER_URL_KEY)
 const writeDefaultServerUrl = (url: string | null) => setStorage(DEFAULT_SERVER_URL_KEY, url)
 
+const isLoopback = (url: string) => {
+  try {
+    const host = new URL(url).hostname
+    return host === "localhost" || host === "127.0.0.1"
+  } catch {
+    return false
+  }
+}
+
 const notify: Platform["notify"] = async (title, description, href) => {
   if (!("Notification" in window)) return
 
@@ -106,8 +115,10 @@ const getCurrentUrl = () => {
 
 const getDefaultUrl = () => {
   const lsDefault = readDefaultServerUrl()
-  if (lsDefault) return lsDefault
-  return getCurrentUrl()
+  const current = getCurrentUrl()
+  if (!lsDefault) return current
+  if (!isLoopback(current) && isLoopback(lsDefault)) return current
+  return lsDefault
 }
 
 const platform: Platform = {
@@ -120,6 +131,10 @@ const platform: Platform = {
   notify,
   getDefaultServer: async () => {
     const stored = readDefaultServerUrl()
+    if (stored && !isLoopback(location.origin) && isLoopback(stored)) {
+      writeDefaultServerUrl(location.origin)
+      return ServerConnection.Key.make(location.origin)
+    }
     return stored ? ServerConnection.Key.make(stored) : null
   },
   setDefaultServer: writeDefaultServerUrl,
