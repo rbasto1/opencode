@@ -11,6 +11,7 @@ import { Log } from "../util/log"
 import { createOpencodeClient } from "@opencode-ai/sdk"
 import { Flag } from "../flag/flag"
 import { CodexAuthPlugin } from "./codex"
+import { AnthropicAuthPlugin } from "./anthropic"
 import { Session } from "../session"
 import { NamedError } from "@opencode-ai/util/error"
 import { CopilotAuthPlugin } from "./github-copilot/copilot"
@@ -58,6 +59,7 @@ export namespace Plugin {
 
   // Built-in plugins that are directly imported (not installed from npm)
   const INTERNAL_PLUGINS: PluginInstance[] = [
+    AnthropicAuthPlugin,
     CodexAuthPlugin,
     CopilotAuthPlugin,
     GitlabAuthPlugin,
@@ -164,9 +166,13 @@ export namespace Plugin {
             if (init._tag === "Some") hooks.push(init.value)
           }
 
-          const plugins = Flag.OPENCODE_PURE ? [] : (cfg.plugin_origins ?? [])
-          if (Flag.OPENCODE_PURE && cfg.plugin_origins?.length) {
-            log.info("skipping external plugins in pure mode", { count: cfg.plugin_origins.length })
+          const origins = Config.deduplicatePluginOrigins([
+            ...BUILTIN.map((spec) => ({ spec, source: "builtin", scope: "global" as const })),
+            ...(cfg.plugin_origins ?? []),
+          ])
+          const plugins = Flag.OPENCODE_PURE ? [] : origins
+          if (Flag.OPENCODE_PURE && origins.length) {
+            log.info("skipping external plugins in pure mode", { count: origins.length })
           }
           if (plugins.length) yield* config.waitForDependencies()
 
